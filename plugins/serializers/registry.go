@@ -9,6 +9,7 @@ import (
 	"github.com/influxdata/telegraf/plugins/serializers/graphite"
 	"github.com/influxdata/telegraf/plugins/serializers/influx"
 	"github.com/influxdata/telegraf/plugins/serializers/json"
+	"github.com/influxdata/telegraf/plugins/serializers/photon"
 	"github.com/influxdata/telegraf/plugins/serializers/splunkmetric"
 )
 
@@ -79,6 +80,8 @@ func NewSerializer(config *Config) (Serializer, error) {
 		serializer, err = NewJsonSerializer(config.TimestampUnits)
 	case "splunkmetric":
 		serializer, err = NewSplunkmetricSerializer(config.HecRouting)
+	case "photon_binary":
+		serializer, err = NewPhotonBinarySerializer(config)
 	default:
 		err = fmt.Errorf("Invalid data format: %s", config.DataFormat)
 	}
@@ -121,4 +124,8 @@ func NewGraphiteSerializer(prefix, template string, tag_support bool) (Serialize
 		Template:   template,
 		TagSupport: tag_support,
 	}, nil
+}
+
+func NewPhotonBinarySerializer(config *Config) (Serializer, error) {
+	return &photon.Serializer{}, nil
 }
