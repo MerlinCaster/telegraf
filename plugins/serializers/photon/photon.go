@@ -11,12 +11,13 @@ import (
 	"github.com/influxdata/telegraf"
 )
 
-const MaxInt64 = int64(^uint64(0) >> 1)
-
 var (
+	// NeedMoreSpace ...
 	NeedMoreSpace = "need more space"
-	InvalidName   = "invalid name"
-	NoFields      = "no serializable fields"
+	// InvalidName ..
+	InvalidName = "invalid name"
+	// NoFields ...
+	NoFields = "no serializable fields"
 )
 
 // MetricError is an error causing an entire metric to be unserializable.
