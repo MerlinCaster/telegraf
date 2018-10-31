@@ -44,14 +44,15 @@ func (e FieldError) Error() string {
 
 // Serializer is a serializer for line protocol.
 type Serializer struct {
-	bytesWritten int
-	SenderID     string
-	buf          bytes.Buffer
+	SenderID string
+	buf      bytes.Buffer
 }
 
 // NewSerializer create new photon binary serializer
 func NewSerializer() *Serializer {
+	log.Printf("I! [serializers.photon_bin] NewSerializer is called")
 	serializer := &Serializer{}
+	serializer.SenderID = "TestSernderId"
 	return serializer
 }
 
@@ -60,6 +61,8 @@ func NewSerializer() *Serializer {
 // with a newline (LF) char.
 func (s *Serializer) Serialize(m telegraf.Metric) ([]byte, error) {
 	s.buf.Reset()
+
+	log.Printf("I! [serializers.photon_bin] Serialize is called")
 
 	writeBatchHeader(&s.buf, 1, s.SenderID)
 
@@ -78,16 +81,21 @@ func (s *Serializer) Serialize(m telegraf.Metric) ([]byte, error) {
 func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 	s.buf.Reset()
 
+	log.Printf("I! [serializers.photon_bin] SerializeBatch is called")
+
 	var (
-		writtenMetricsCount int32 = 0
+		writtenMetricsCount int32
 		metricBuffer        bytes.Buffer
 	)
 
 	for _, m := range metrics {
 
+		metricBuffer.Reset()
 		err := writeMetric(&metricBuffer, m)
 		if err != nil {
-			return nil, err
+
+			log.Printf("W! [serializers.photon_bin] SerializeBatch got error from writeMetric: %v", err)
+			continue
 		}
 		metricBuffer.WriteTo(&s.buf)
 
@@ -109,21 +117,20 @@ func writeMetric(w *bytes.Buffer, m telegraf.Metric) error {
 	io.WriteString(w, m.Name())
 	writeInt16(w, 1)
 
-	switch len(m.Fields()) {
+	switch len(m.FieldList()) {
 	case 0:
 		log.Printf(
 			"W! [serializers.photon_bin] could not serialize metric %v; It has no fields. discarding it", m.Name())
 		return nil
 	case 1:
-		for k := range m.Fields() {
-			log.Printf("D! [serializers.photon_bin] metric %v; has field: %v", m.Name(), k)
-		}
-		err = appendFieldValue(w, m.Fields()["value"])
+		flds := m.FieldList()
+		err = appendFieldValue(w, m.Name(), flds[0].Key, flds[0].Value)
 	default:
+		log.Printf("D! [serializers.photon_bin] metric %v; has MANY! fields", m.Name())
 		for k := range m.Fields() {
 			log.Printf("D! [serializers.photon_bin] metric %v; has field: %v", m.Name(), k)
 		}
-		err = appendFieldValue(w, m.Fields()["mean"])
+		err = appendFieldValue(w, m.Name(), "value_mean", m.Fields()["value_mean"])
 	}
 
 	return err
@@ -173,7 +180,12 @@ func (s *Serializer) newMetricError(reason string) *MetricError {
 	return &MetricError{reason: reason}
 }
 
-func appendFieldValue(w io.ByteWriter, value interface{}) error {
+func appendFieldValue(w io.ByteWriter, metricName, fieldName string, value interface{}) error {
+
+	if value == nil {
+		return &FieldError{fmt.Sprintf("metric %v does not have field %v", metricName, fieldName)}
+	}
+
 	switch v := value.(type) {
 	case float64:
 		if math.IsNaN(v) {
