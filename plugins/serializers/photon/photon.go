@@ -6,24 +6,12 @@ import (
 	"io"
 	"math"
 	"strconv"
+	"time"
 
 	"github.com/influxdata/telegraf"
 )
 
 const MaxInt64 = int64(^uint64(0) >> 1)
-
-type FieldSortOrder int
-
-const (
-	NoSortFields FieldSortOrder = iota
-	SortFields
-)
-
-type FieldTypeSupport int
-
-const (
-	UintSupport FieldTypeSupport = 1 << iota
-)
 
 var (
 	NeedMoreSpace = "need more space"
@@ -56,9 +44,11 @@ func (e FieldError) Error() string {
 // Serializer is a serializer for line protocol.
 type Serializer struct {
 	bytesWritten int
+	SenderID     string
 	buf          bytes.Buffer
 }
 
+// NewSerializer create new photon binary serializer
 func NewSerializer() *Serializer {
 	serializer := &Serializer{}
 	return serializer
@@ -83,6 +73,9 @@ func (s *Serializer) Serialize(m telegraf.Metric) ([]byte, error) {
 // results.  The returned byte slice may contain multiple lines of data.
 func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 	s.buf.Reset()
+
+	s.writeBatchHeader(len(metrics))
+
 	for _, m := range metrics {
 		_, err := s.Write(&s.buf, m)
 		if err != nil {
@@ -105,9 +98,45 @@ func (s *Serializer) writeString(w io.Writer, str string) error {
 	return err
 }
 
-func (s *Serializer) write(w io.Writer, b []byte) error {
-	n, err := w.Write(b)
-	s.bytesWritten += n
+func (s *Serializer) writeBatchHeader(len int) error {
+	s.buf.WriteByte(0xee)
+	s.buf.WriteByte(0xff)
+	s.bytesWritten += 2
+
+	s.writeInt32(&s.buf, int32(len))
+	err := s.writeString(&s.buf, s.SenderID)
+
+	return err
+}
+
+func (s *Serializer) writeTime(w io.ByteWriter, t time.Time) error {
+
+	d := t.Sub(time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC))
+	ticks := d.Nanoseconds() / int64(100)
+
+	err := w.WriteByte(byte(ticks))
+	err = w.WriteByte(byte(ticks >> 8))
+	err = w.WriteByte(byte(ticks >> 16))
+	err = w.WriteByte(byte(ticks >> 24))
+	err = w.WriteByte(byte(ticks >> 32))
+	err = w.WriteByte(byte(ticks >> 40))
+	err = w.WriteByte(byte(ticks >> 48))
+	err = w.WriteByte(byte(ticks >> 56))
+
+	s.bytesWritten += 8
+
+	return err
+}
+
+func (s *Serializer) writeInt32(w io.ByteWriter, value int32) error {
+
+	err := w.WriteByte(byte(value))
+	err = w.WriteByte(byte(value >> 8))
+	err = w.WriteByte(byte(value >> 16))
+	err = w.WriteByte(byte(value >> 24))
+
+	s.bytesWritten += 4
+
 	return err
 }
 
