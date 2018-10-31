@@ -90,11 +90,12 @@ func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 
 	for _, m := range metrics {
 
-		metricBuffer.Reset()
 		err := writeMetric(&metricBuffer, m)
 		if err != nil {
 
 			log.Printf("W! [serializers.photon_bin] SerializeBatch got error from writeMetric: %v", err)
+
+			metricBuffer.Reset()
 			continue
 		}
 		metricBuffer.WriteTo(&s.buf)
