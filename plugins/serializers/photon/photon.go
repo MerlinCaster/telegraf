@@ -2,6 +2,7 @@ package photon
 
 import (
 	"bytes"
+	"encoding/binary"
 	"fmt"
 	"io"
 	"log"
@@ -115,8 +116,10 @@ func writeMetric(w *bytes.Buffer, m telegraf.Metric) error {
 		err error
 	)
 
-	io.WriteString(w, m.Name())
+	writeString(w, m.Name())
 	writeInt16(w, 1)
+
+	writeTime(w, m.Time())
 
 	switch len(m.FieldList()) {
 	case 0:
@@ -141,21 +144,37 @@ func writeBatchHeader(w *bytes.Buffer, len int32, senderId string) error {
 	w.WriteByte(0xee)
 	w.WriteByte(0xff)
 
+	writeTime(w, time.Now())
 	writeInt32(w, int32(len))
-	_, err := w.WriteString(senderId)
+	err := writeString(w, senderId)
 
 	return err
 }
 
-func writeString(w io.Writer, str string) error {
-	_, err := io.WriteString(w, str)
+func write7BitEncodedInt(w io.ByteWriter, value int32) {
+	// Write out an int 7 bits at a time.  The high bit of the byte,
+	// when on, tells reader to continue reading more bytes.
+	v := uint32(value) // support negative numbers
+	for v >= 0x80 {
+		w.WriteByte(byte(v | 0x80))
+		v >>= 7
+	}
+	w.WriteByte(byte(v))
+}
+
+func writeString(w *bytes.Buffer, str string) error {
+
+	l := len(str)
+
+	write7BitEncodedInt(w, int32(l))
+	_, err := w.WriteString(str)
 	return err
 }
 
 func writeTime(w io.ByteWriter, t time.Time) {
 
 	d := t.Sub(time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC))
-	ticks := d.Nanoseconds() / int64(100)
+	ticks := d.Nanoseconds()/int64(100) | 0x4000000000000000
 
 	writeInt64Value(w, ticks)
 }
@@ -181,7 +200,7 @@ func (s *Serializer) newMetricError(reason string) *MetricError {
 	return &MetricError{reason: reason}
 }
 
-func appendFieldValue(w io.ByteWriter, metricName, fieldName string, value interface{}) error {
+func appendFieldValue(w io.Writer, metricName, fieldName string, value interface{}) error {
 
 	if value == nil {
 		return &FieldError{fmt.Sprintf("metric %v does not have field %v", metricName, fieldName)}
@@ -197,7 +216,7 @@ func appendFieldValue(w io.ByteWriter, metricName, fieldName string, value inter
 			return &FieldError{"is Inf"}
 		}
 
-		appendFloatField(w, v)
+		appendFloatField(w, float32(v))
 		return nil
 	default:
 		log.Printf("D! [serializers.photon_bin] invalid value type: %T", v)
@@ -216,7 +235,6 @@ func writeInt64Value(w io.ByteWriter, value int64) {
 	w.WriteByte(byte(value >> 56))
 }
 
-func appendFloatField(w io.ByteWriter, value float64) {
-	int64Value := int64(value)
-	writeInt64Value(w, int64Value)
+func appendFloatField(w io.Writer, value float32) {
+	binary.Write(w, binary.LittleEndian, value)
 }
