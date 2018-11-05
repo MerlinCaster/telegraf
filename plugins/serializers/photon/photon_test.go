@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"math"
 	"testing"
 	"time"
 
@@ -27,48 +28,28 @@ type PhotonReadResult struct {
 	metrics   []telegraf.Metric
 }
 
-var MetricTime time.Time = time.Date(2018, 1, 1, 1, 0, 0, 0, time.UTC)
+var MetricTime time.Time = time.Unix(0, 0).UTC()
 
 var tests = []struct {
 	name      string
-	maxBytes  int
 	input     telegraf.Metric
-	output    []byte
 	errReason string
 }{
-	{
-		name: "minimal",
-		input: MustMetric(
-			metric.New(
-				"cpu",
-				map[string]string{},
-				map[string]interface{}{
-					"value": 42.0,
-				},
-				MetricTime,
-			),
-		),
-		output: []byte("cpu value=42 0\n"),
-	},
 	// {
-	// 	name: "multiple tags",
+	// 	name: "minimal",
 	// 	input: MustMetric(
 	// 		metric.New(
 	// 			"cpu",
-	// 			map[string]string{
-	// 				"host": "localhost",
-	// 				"cpu":  "CPU0",
-	// 			},
+	// 			map[string]string{},
 	// 			map[string]interface{}{
 	// 				"value": 42.0,
 	// 			},
-	// 			time.Date(2018, 1, 1, 1, 0, 0, 0, time.UTC),
+	// 			MetricTime,
 	// 		),
 	// 	),
-	// 	output: []byte("cpu,cpu=CPU0,host=localhost value=42 0\n"),
 	// },
 	// {
-	// 	name: "arbitrary name fields",
+	// 	name: "arbitrary name field",
 	// 	input: MustMetric(
 	// 		metric.New(
 	// 			"cpu",
@@ -76,10 +57,25 @@ var tests = []struct {
 	// 			map[string]interface{}{
 	// 				"x": 42.0,
 	// 			},
-	// 			time.Date(2018, 1, 1, 1, 0, 0, 0, time.UTC),
+	// 			MetricTime,
 	// 		),
 	// 	),
-	// 	output: []byte("cpu x=42,y=42 0\n"),
+	// },
+	// {
+	// 	name: "arbitrary name fieldS",
+
+	// 	input: MustMetric(
+	// 		metric.New(
+	// 			"cpu",
+	// 			map[string]string{},
+	// 			map[string]interface{}{
+	// 				"x": 42.0,
+	// 				"y": 42.0,
+	// 			},
+	// 			MetricTime,
+	// 		),
+	// 	),
+	// 	errReason: "metric cpu does not have field value_mean",
 	// },
 	// {
 	// 	name: "float NaN",
@@ -89,27 +85,25 @@ var tests = []struct {
 	// 			map[string]string{},
 	// 			map[string]interface{}{
 	// 				"x": math.NaN(),
-	// 				"y": 42,
 	// 			},
 	// 			time.Unix(0, 0),
 	// 		),
 	// 	),
-	// 	output: []byte("cpu y=42i 0\n"),
 	// },
-	// {
-	// 	name: "float NaN only",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"value": math.NaN(),
-	// 			},
-	// 			time.Unix(0, 0),
-	// 		),
-	// 	),
-	// 	errReason: NoFields,
-	// },
+	{
+		name: "float NaN only",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"value": math.NaN(),
+				},
+				time.Unix(0, 0),
+			),
+		),
+		errReason: NoFields,
+	},
 	// {
 	// 	name: "float Inf",
 	// 	input: MustMetric(
@@ -118,12 +112,10 @@ var tests = []struct {
 	// 			map[string]string{},
 	// 			map[string]interface{}{
 	// 				"value": math.Inf(1),
-	// 				"y":     42,
 	// 			},
 	// 			time.Unix(0, 0),
 	// 		),
 	// 	),
-	// 	output: []byte("cpu y=42i 0\n"),
 	// },
 	// {
 	// 	name: "integer field",
@@ -137,7 +129,6 @@ var tests = []struct {
 	// 			time.Unix(0, 0),
 	// 		),
 	// 	),
-	// 	output: []byte("cpu value=42i 0\n"),
 	// },
 	// {
 	// 	name: "integer field 64-bit",
@@ -148,73 +139,9 @@ var tests = []struct {
 	// 			map[string]interface{}{
 	// 				"value": int64(123456789012345),
 	// 			},
-	// 			time.Unix(0, 0),
+	// 			MetricTime,
 	// 		),
 	// 	),
-	// 	output: []byte("cpu value=123456789012345i 0\n"),
-	// },
-	// {
-	// 	name:     "split fields exact",
-	// 	maxBytes: 33,
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"abc": 123,
-	// 				"def": 456,
-	// 			},
-	// 			time.Unix(1519194109, 42),
-	// 		),
-	// 	),
-	// 	output: []byte("cpu abc=123i 1519194109000000042\ncpu def=456i 1519194109000000042\n"),
-	// },
-	// {
-	// 	name:     "split fields extra",
-	// 	maxBytes: 34,
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"abc": 123,
-	// 				"def": 456,
-	// 			},
-	// 			time.Unix(1519194109, 42),
-	// 		),
-	// 	),
-	// 	output: []byte("cpu abc=123i 1519194109000000042\ncpu def=456i 1519194109000000042\n"),
-	// },
-	// {
-	// 	name: "name newline",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"c\npu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"value": 42,
-	// 			},
-	// 			time.Unix(0, 0),
-	// 		),
-	// 	),
-	// 	output: []byte("c\\npu value=42i 0\n"),
-	// },
-	// {
-	// 	name:     "need more space",
-	// 	maxBytes: 32,
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"abc": 123,
-	// 				"def": 456,
-	// 			},
-	// 			time.Unix(1519194109, 42),
-	// 		),
-	// 	),
-	// 	output:    nil,
-	// 	errReason: NeedMoreSpace,
 	// },
 	// {
 	// 	name: "no fields",
@@ -241,7 +168,14 @@ func TestSerializer(t *testing.T) {
 				return
 			}
 
-			require.Equal(t, string(tt.output), string(output))
+			result := ProcessBinary(t, output)
+
+			m := tt.input
+			resultM := result.metrics[0]
+
+			require.Equal(t, m.Time(), resultM.Time())
+			require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
+
 		})
 	}
 }
@@ -277,7 +211,13 @@ func TestSerialize_SerializeBatch(t *testing.T) {
 	output, err := serializer.SerializeBatch(metrics)
 	require.NoError(t, err)
 
-	ProcessBinary(t, output)
+	result := ProcessBinary(t, output)
+
+	m = metrics[0]
+	resultM := result.metrics[0]
+
+	require.Equal(t, m.Time(), resultM.Time())
+	require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
 }
 
 func ProcessBinary(t *testing.T, data []byte) PhotonReadResult {
@@ -382,7 +322,8 @@ func ProcessBinary(t *testing.T, data []byte) PhotonReadResult {
 
 			fields[CounterName] = float64(value)
 
-			m, _ := metric.New(CounterName, map[string]string{}, fields, time.Unix(dotnetTimeToUnix(dotnetTimestamp), 0))
+			m, _ := metric.New(CounterName, map[string]string{}, fields,
+				time.Unix(dotnetTimeToUnix(dotnetTimestamp), 0).UTC())
 
 			result.metrics = append(result.metrics, m)
 		}
