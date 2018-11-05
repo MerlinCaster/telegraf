@@ -173,10 +173,9 @@ func writeString(w *bytes.Buffer, str string) error {
 
 func writeTime(w io.ByteWriter, t time.Time) {
 
-	d := t.Sub(time.Date(1, 1, 1, 0, 0, 0, 0, time.UTC))
-	ticks := d.Nanoseconds()/int64(100) | 0x4000000000000000
+	d := t.Unix()*10000000 + 621355968000000000
 
-	writeInt64Value(w, ticks)
+	writeInt64Value(w, d)
 }
 
 func writeInt32(w io.ByteWriter, value int32) error {
@@ -206,7 +205,25 @@ func appendFieldValue(w io.Writer, metricName, fieldName string, value interface
 		return &FieldError{fmt.Sprintf("metric %v does not have field %v", metricName, fieldName)}
 	}
 
+	var valueToWrite float32
 	switch v := value.(type) {
+	case int32:
+		valueToWrite = float32(v)
+	case uint32:
+		valueToWrite = float32(v)
+	case int64:
+		valueToWrite = float32(v)
+	case uint64:
+		valueToWrite = float32(v)
+	case float32:
+		if v != v {
+			return &FieldError{"is NaN"}
+		}
+
+		if math.MaxFloat32 < v {
+			return &FieldError{"is Inf"}
+		}
+		valueToWrite = v
 	case float64:
 		if math.IsNaN(v) {
 			return &FieldError{"is NaN"}
@@ -216,12 +233,14 @@ func appendFieldValue(w io.Writer, metricName, fieldName string, value interface
 			return &FieldError{"is Inf"}
 		}
 
-		appendFloatField(w, float32(v))
-		return nil
+		valueToWrite = float32(v)
 	default:
 		log.Printf("D! [serializers.photon_bin] invalid value type: %T", v)
 		return &FieldError{fmt.Sprintf("invalid value type: %T", v)}
 	}
+
+	appendFloatField(w, valueToWrite)
+	return nil
 }
 
 func writeInt64Value(w io.ByteWriter, value int64) {
