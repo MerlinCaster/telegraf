@@ -1616,6 +1616,15 @@ func getParserConfig(name string, tbl *ast.Table) (*parsers.Config, error) {
 	return c, nil
 }
 
+// An ConfigError describes an invalid argument passed config value
+type ConfigError struct {
+	reason string
+}
+
+func (e *ConfigError) Error() string {
+	return e.reason
+}
+
 // buildSerializer grabs the necessary entries from the ast.Table for creating
 // a serializers.Serializer object, and creates it, which can then be added onto
 // an Output object.
@@ -1726,6 +1735,22 @@ func buildSerializer(name string, tbl *ast.Table) (serializers.Serializer, error
 		}
 	}
 
+	if node, ok := tbl.Fields["photon_sender_id"]; ok {
+		if kv, ok := node.(*ast.KeyValue); ok {
+			if str, ok := kv.Value.(*ast.String); ok {
+				var err error
+				c.PhotonSenderId = str.Value
+				if c.PhotonSenderId == "" {
+					return nil, &ConfigError{reason: "photon_sender_id cannot be empty"}
+				}
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+	}
+
+	delete(tbl.Fields, "photon_sender_id")
 	delete(tbl.Fields, "influx_max_line_bytes")
 	delete(tbl.Fields, "influx_sort_fields")
 	delete(tbl.Fields, "influx_uint_support")
