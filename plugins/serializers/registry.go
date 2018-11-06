@@ -65,6 +65,9 @@ type Config struct {
 
 	// Include HEC routing fields for splunkmetric output
 	HecRouting bool
+
+	//SenderId supported by photon_binary
+	SenderId string
 }
 
 // NewSerializer a Serializer interface based on the given config.
@@ -127,5 +130,5 @@ func NewGraphiteSerializer(prefix, template string, tag_support bool) (Serialize
 }
 
 func NewPhotonBinarySerializer(config *Config) (Serializer, error) {
-	return &photon.Serializer{}, nil
+	return photon.NewSerializer(config.SenderId), nil
 }

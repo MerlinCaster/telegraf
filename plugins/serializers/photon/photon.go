@@ -50,10 +50,10 @@ type Serializer struct {
 }
 
 // NewSerializer create new photon binary serializer
-func NewSerializer() *Serializer {
+func NewSerializer(senderId string) *Serializer {
 	log.Printf("I! [serializers.photon_bin] NewSerializer is called")
 	serializer := &Serializer{}
-	serializer.SenderID = "TestSernderId"
+	serializer.SenderID = senderId
 	return serializer
 }
 

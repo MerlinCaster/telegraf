@@ -162,7 +162,7 @@ var tests = []struct {
 func TestSerializer(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			serializer := NewSerializer()
+			serializer := NewSerializer("TestSerializerId")
 			output, err := serializer.Serialize(tt.input)
 			if tt.errReason != "" {
 				require.Error(t, err)
@@ -185,7 +185,7 @@ func TestSerializer(t *testing.T) {
 func BenchmarkSerializer(b *testing.B) {
 	for _, tt := range tests {
 		b.Run(tt.name, func(b *testing.B) {
-			serializer := NewSerializer()
+			serializer := NewSerializer("TestSerializerId")
 			for n := 0; n < b.N; n++ {
 				output, err := serializer.Serialize(tt.input)
 				_ = err
@@ -209,7 +209,7 @@ func TestSerialize_SerializeBatch(t *testing.T) {
 
 	metrics := []telegraf.Metric{m, m}
 
-	serializer := NewSerializer()
+	serializer := NewSerializer("TestSerializerId")
 	output, err := serializer.SerializeBatch(metrics)
 	require.NoError(t, err)
 
