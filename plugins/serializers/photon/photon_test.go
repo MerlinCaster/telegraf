@@ -35,61 +35,62 @@ var tests = []struct {
 	input     telegraf.Metric
 	errReason string
 }{
-	// {
-	// 	name: "minimal",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"value": 42.0,
-	// 			},
-	// 			MetricTime,
-	// 		),
-	// 	),
-	// },
-	// {
-	// 	name: "arbitrary name field",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"x": 42.0,
-	// 			},
-	// 			MetricTime,
-	// 		),
-	// 	),
-	// },
-	// {
-	// 	name: "arbitrary name fieldS",
+	{
+		name: "minimal",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"value": 42.0,
+				},
+				MetricTime,
+			),
+		),
+	},
+	{
+		name: "arbitrary name field",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"x": 42.0,
+				},
+				MetricTime,
+			),
+		),
+	},
+	{
+		name: "arbitrary name fieldS",
 
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"x": 42.0,
-	// 				"y": 42.0,
-	// 			},
-	// 			MetricTime,
-	// 		),
-	// 	),
-	// 	errReason: "metric cpu does not have field value_mean",
-	// },
-	// {
-	// 	name: "float NaN",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"x": math.NaN(),
-	// 			},
-	// 			time.Unix(0, 0),
-	// 		),
-	// 	),
-	// },
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"x": 42.0,
+					"y": 42.0,
+				},
+				MetricTime,
+			),
+		),
+		errReason: NoFields,
+	},
+	{
+		name: "float NaN",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"x": math.NaN(),
+				},
+				time.Unix(0, 0),
+			),
+		),
+		errReason: NoFields,
+	},
 	{
 		name: "float NaN only",
 		input: MustMetric(
@@ -104,32 +105,33 @@ var tests = []struct {
 		),
 		errReason: NoFields,
 	},
-	// {
-	// 	name: "float Inf",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"value": math.Inf(1),
-	// 			},
-	// 			time.Unix(0, 0),
-	// 		),
-	// 	),
-	// },
-	// {
-	// 	name: "integer field",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{
-	// 				"value": 42,
-	// 			},
-	// 			time.Unix(0, 0),
-	// 		),
-	// 	),
-	// },
+	{
+		name: "float Inf",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"value": math.Inf(1),
+				},
+				time.Unix(0, 0),
+			),
+		),
+		errReason: NoFields,
+	},
+	{
+		name: "integer field",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{
+					"value": int32(42),
+				},
+				time.Unix(0, 0).UTC(),
+			),
+		),
+	},
 	// {
 	// 	name: "integer field 64-bit",
 	// 	input: MustMetric(
@@ -143,18 +145,18 @@ var tests = []struct {
 	// 		),
 	// 	),
 	// },
-	// {
-	// 	name: "no fields",
-	// 	input: MustMetric(
-	// 		metric.New(
-	// 			"cpu",
-	// 			map[string]string{},
-	// 			map[string]interface{}{},
-	// 			time.Unix(0, 0),
-	// 		),
-	// 	),
-	// 	errReason: NoFields,
-	// },
+	{
+		name: "no fields",
+		input: MustMetric(
+			metric.New(
+				"cpu",
+				map[string]string{},
+				map[string]interface{}{},
+				time.Unix(0, 0),
+			),
+		),
+		errReason: NoFields,
+	},
 }
 
 func TestSerializer(t *testing.T) {
@@ -174,7 +176,7 @@ func TestSerializer(t *testing.T) {
 			resultM := result.metrics[0]
 
 			require.Equal(t, m.Time(), resultM.Time())
-			require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
+			require.EqualValues(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
 
 		})
 	}
@@ -205,7 +207,7 @@ func TestSerialize_SerializeBatch(t *testing.T) {
 		),
 	)
 
-	metrics := []telegraf.Metric{m}
+	metrics := []telegraf.Metric{m, m}
 
 	serializer := NewSerializer()
 	output, err := serializer.SerializeBatch(metrics)
@@ -215,6 +217,11 @@ func TestSerialize_SerializeBatch(t *testing.T) {
 
 	m = metrics[0]
 	resultM := result.metrics[0]
+
+	require.Equal(t, m.Time(), resultM.Time())
+	require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
+
+	resultM = result.metrics[1]
 
 	require.Equal(t, m.Time(), resultM.Time())
 	require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
