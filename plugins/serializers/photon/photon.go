@@ -125,16 +125,28 @@ func writeMetric(w *bytes.Buffer, m telegraf.Metric) error {
 	case 0:
 		log.Printf(
 			"W! [serializers.photon_bin] could not serialize metric %v; It has no fields. discarding it", m.Name())
-		return nil
+		return newMetricError(NoFields)
 	case 1:
 		flds := m.FieldList()
 		err = appendFieldValue(w, m.Name(), flds[0].Key, flds[0].Value)
+		if err != nil {
+			return newMetricError(NoFields)
+		}
 	default:
 		log.Printf("D! [serializers.photon_bin] metric %v; has MANY! fields", m.Name())
-		for k := range m.Fields() {
+		for _, k := range m.FieldList() {
 			log.Printf("D! [serializers.photon_bin] metric %v; has field: %v", m.Name(), k)
+
+			ok, valueToWrite := isValidFieldTypeAndValue(k.Value)
+			if !ok {
+				continue
+			}
+			if k.Key == "value_mean" || k.Key == "value" {
+				appendFloatField(w, valueToWrite)
+				return nil
+			}
 		}
-		err = appendFieldValue(w, m.Name(), "value_mean", m.Fields()["value_mean"])
+		err = newMetricError(NoFields)
 	}
 
 	return err
@@ -195,8 +207,53 @@ func writeInt16(w io.ByteWriter, value int16) error {
 	return err
 }
 
-func (s *Serializer) newMetricError(reason string) *MetricError {
+func newMetricError(reason string) *MetricError {
 	return &MetricError{reason: reason}
+}
+
+func isFloat32Valid(v float32) error {
+	if v != v {
+		return &FieldError{"is NaN"}
+	}
+
+	if math.MaxFloat32 < v {
+		return &FieldError{"is Inf"}
+	}
+	return nil
+}
+
+func isValidFieldTypeAndValue(value interface{}) (bool, float32) {
+	var valueToWrite float32
+	switch v := value.(type) {
+	case int32:
+		valueToWrite = float32(v)
+	case uint32:
+		valueToWrite = float32(v)
+	case int64:
+		valueToWrite = float32(v)
+	case uint64:
+		valueToWrite = float32(v)
+	case float32:
+		valueToWrite = v
+	case float64:
+		if math.IsNaN(v) {
+			return false, 0.0
+		}
+
+		if math.IsInf(v, 0) {
+			return false, 0.0
+		}
+
+		valueToWrite = float32(v)
+	default:
+		return false, 0.0
+	}
+	err := isFloat32Valid(valueToWrite)
+	if err != nil {
+		return false, 0.0
+	}
+
+	return true, valueToWrite
 }
 
 func appendFieldValue(w io.Writer, metricName, fieldName string, value interface{}) error {
@@ -216,13 +273,6 @@ func appendFieldValue(w io.Writer, metricName, fieldName string, value interface
 	case uint64:
 		valueToWrite = float32(v)
 	case float32:
-		if v != v {
-			return &FieldError{"is NaN"}
-		}
-
-		if math.MaxFloat32 < v {
-			return &FieldError{"is Inf"}
-		}
 		valueToWrite = v
 	case float64:
 		if math.IsNaN(v) {
@@ -237,6 +287,11 @@ func appendFieldValue(w io.Writer, metricName, fieldName string, value interface
 	default:
 		log.Printf("D! [serializers.photon_bin] invalid value type: %T", v)
 		return &FieldError{fmt.Sprintf("invalid value type: %T", v)}
+	}
+
+	err := isFloat32Valid(valueToWrite)
+	if err != nil {
+		return err
 	}
 
 	appendFloatField(w, valueToWrite)
