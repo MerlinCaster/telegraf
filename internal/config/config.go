@@ -1738,13 +1738,18 @@ func buildSerializer(name string, tbl *ast.Table) (serializers.Serializer, error
 	if node, ok := tbl.Fields["photon_sender_id"]; ok {
 		if kv, ok := node.(*ast.KeyValue); ok {
 			if str, ok := kv.Value.(*ast.String); ok {
-				var err error
 				c.PhotonSenderId = str.Value
 				if c.PhotonSenderId == "" {
 					return nil, &ConfigError{reason: "photon_sender_id cannot be empty"}
 				}
-				if err != nil {
-					return nil, err
+
+				if strings.Contains(c.PhotonSenderId, "%v") {
+					hostname, err := os.Hostname()
+					if err != nil {
+						return nil, err
+					}
+					c.PhotonSenderId = fmt.Sprintf(c.PhotonSenderId, hostname)
+					log.Printf("I! new value of photon_sender_id is '%v'", c.PhotonSenderId)
 				}
 			}
 		}
