@@ -127,6 +127,7 @@ func writeMetric(w *bytes.Buffer, m telegraf.Metric) error {
 			"W! [serializers.photon_bin] could not serialize metric %v; It has no fields. discarding it", m.Name())
 		return newMetricError(NoFields)
 	case 1:
+		log.Printf("D! [serializers.photon_bin] metric %v;", m.Name())
 		flds := m.FieldList()
 		err = appendFieldValue(w, m.Name(), flds[0].Key, flds[0].Value)
 		if err != nil {
