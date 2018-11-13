@@ -43,10 +43,16 @@ func (e FieldError) Error() string {
 	return e.reason
 }
 
+type photonMetricSample struct {
+	time  time.Time
+	value float32
+}
+
 // Serializer is a serializer for line protocol.
 type Serializer struct {
-	SenderID string
-	buf      bytes.Buffer
+	SenderID     string
+	buf          bytes.Buffer
+	metricsIndex map[string][]photonMetricSample
 }
 
 // NewSerializer create new photon binary serializer
@@ -54,6 +60,7 @@ func NewSerializer(senderId string) *Serializer {
 	log.Printf("I! [serializers.photon_bin] NewSerializer is called")
 	serializer := &Serializer{}
 	serializer.SenderID = senderId
+	serializer.metricsIndex = make(map[string][]photonMetricSample)
 	return serializer
 }
 
@@ -86,21 +93,33 @@ func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 
 	var (
 		writtenMetricsCount int32
-		metricBuffer        bytes.Buffer
 	)
 
 	for _, m := range metrics {
 
-		err := writeMetric(&metricBuffer, m)
+		err := indexMetric(s.metricsIndex, m)
 		if err != nil {
 
 			log.Printf("W! [serializers.photon_bin] SerializeBatch got error from writeMetric: %v", err)
 
-			metricBuffer.Reset()
 			continue
 		}
-		metricBuffer.WriteTo(&s.buf)
+	}
 
+	for name, samples := range s.metricsIndex {
+		samplesLen := len(samples)
+		if samplesLen == 0 {
+			continue
+		}
+
+		err := writeIndexedMetric(&s.buf, name, samplesLen, samples)
+
+		//reset
+		s.metricsIndex[name] = []photonMetricSample{}
+		if err != nil {
+			log.Printf("W! [serializers.photon_bin] got error from writeIndexedMetric: %v", err)
+			continue
+		}
 		writtenMetricsCount++
 	}
 
@@ -109,6 +128,66 @@ func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 
 	s.buf.WriteTo(&result)
 	return result.Bytes(), nil
+}
+
+func writeIndexedMetric(w *bytes.Buffer, name string, samplesLen int, samples []photonMetricSample) error {
+
+	log.Printf("D! [serializers.photon_bin] writing indexed metric: %v, values count: %v", name, samplesLen)
+
+	writeString(w, name)
+	writeInt16(w, int16(samplesLen))
+
+	for _, value := range samples {
+		writeTime(w, value.time)
+		appendFloatField(w, value.value)
+	}
+	return nil
+}
+
+func indexMetric(index map[string][]photonMetricSample, m telegraf.Metric) error {
+
+	value, err := getMetricValue(m)
+	if err != nil {
+		return err
+	}
+
+	name := m.Name()
+	index[name] = append(index[name], photonMetricSample{m.Time(), value})
+
+	return nil
+}
+
+func getMetricValue(m telegraf.Metric) (float32, error) {
+	var err error
+	flds := m.FieldList()
+	switch len(flds) {
+	case 0:
+		log.Printf(
+			"W! [serializers.photon_bin] could not serialize metric %v; It has no fields. discarding it", m.Name())
+		return 0, newMetricError(NoFields)
+	case 1:
+		log.Printf("D! [serializers.photon_bin] metric %v;", m.Name())
+		ok, valueToWrite := isValidFieldTypeAndValue(flds[0].Value)
+		if ok {
+			return valueToWrite, nil
+		}
+	default:
+		log.Printf("D! [serializers.photon_bin] metric %v; has MANY! fields", m.Name())
+		for _, k := range flds {
+			log.Printf("D! [serializers.photon_bin] metric %v; has field: %v", m.Name(), k)
+
+			ok, valueToWrite := isValidFieldTypeAndValue(k.Value)
+			if !ok {
+				continue
+			}
+			if k.Key == "value_mean" || k.Key == "value" {
+				return valueToWrite, nil
+			}
+		}
+		err = newMetricError(NoFields)
+	}
+
+	return 0, err
 }
 
 func writeMetric(w *bytes.Buffer, m telegraf.Metric) error {

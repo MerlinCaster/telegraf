@@ -25,7 +25,7 @@ func MustMetric(v telegraf.Metric, err error) telegraf.Metric {
 type PhotonReadResult struct {
 	SenderId  string
 	timestamp time.Time
-	metrics   []telegraf.Metric
+	metrics   map[string][]photonMetricSample
 }
 
 var MetricTime time.Time = time.Unix(0, 0).UTC()
@@ -173,10 +173,11 @@ func TestSerializer(t *testing.T) {
 			result := ProcessBinary(t, output)
 
 			m := tt.input
-			resultM := result.metrics[0]
 
-			require.Equal(t, m.Time(), resultM.Time())
-			require.EqualValues(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
+			resultM := result.metrics[m.Name()]
+
+			require.Equal(t, m.Time(), resultM[0].time)
+			require.EqualValues(t, m.FieldList()[0].Value, resultM[0].value)
 
 		})
 	}
@@ -216,15 +217,13 @@ func TestSerialize_SerializeBatch(t *testing.T) {
 	result := ProcessBinary(t, output)
 
 	m = metrics[0]
-	resultM := result.metrics[0]
+	resultM := result.metrics["cpu"]
 
-	require.Equal(t, m.Time(), resultM.Time())
-	require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
+	require.Equal(t, m.Time(), resultM[0].time)
+	require.EqualValues(t, m.FieldList()[0].Value, resultM[0].value)
 
-	resultM = result.metrics[1]
-
-	require.Equal(t, m.Time(), resultM.Time())
-	require.Equal(t, m.FieldList()[0].Value, resultM.FieldList()[0].Value)
+	require.Equal(t, m.Time(), resultM[1].time)
+	require.EqualValues(t, m.FieldList()[0].Value, resultM[1].value)
 }
 
 func ProcessBinary(t *testing.T, data []byte) PhotonReadResult {
@@ -310,6 +309,7 @@ func ProcessBinary(t *testing.T, data []byte) PhotonReadResult {
 		var count int32
 		read(&count)
 		result.SenderId = readString7BitEncodingLen()
+		result.metrics = make(map[string][]photonMetricSample)
 
 		//var err error
 		for i := int32(0); i < count; i++ {
@@ -318,21 +318,20 @@ func ProcessBinary(t *testing.T, data []byte) PhotonReadResult {
 			var valueCount int16
 			read(&valueCount)
 
-			fields := make(map[string]interface{})
+			require.NotEqual(t, int16(0), valueCount)
 
-			require.Equal(t, int16(1), valueCount)
+			samples := make([]photonMetricSample, 0, 1)
 
-			var dotnetTimestamp uint64
-			read(&dotnetTimestamp)
-			var value float32
-			read(&value)
+			for i := 0; i < int(valueCount); i++ {
 
-			fields[CounterName] = float64(value)
+				var dotnetTimestamp uint64
+				read(&dotnetTimestamp)
+				var value float32
+				read(&value)
+				samples = append(samples, photonMetricSample{time.Unix(dotnetTimeToUnix(dotnetTimestamp), 0).UTC(), value})
+			}
 
-			m, _ := metric.New(CounterName, map[string]string{}, fields,
-				time.Unix(dotnetTimeToUnix(dotnetTimestamp), 0).UTC())
-
-			result.metrics = append(result.metrics, m)
+			result.metrics[CounterName] = samples
 		}
 	}
 	return result
