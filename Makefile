@@ -21,7 +21,7 @@ else
 PATH := $(subst :,/bin:,$(shell go env GOPATH))/bin:$(PATH)
 endif
 
-LDFLAGS := $(LDFLAGS) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH)
+LDFLAGS := $(LDFLAGS) -X main.commit=$(COMMIT) -X main.branch=$(BRANCH) -s -w
 ifdef VERSION
 	LDFLAGS += -X main.version=$(VERSION)
 endif
