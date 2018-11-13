@@ -57,7 +57,7 @@ type Serializer struct {
 
 // NewSerializer create new photon binary serializer
 func NewSerializer(senderId string) *Serializer {
-	log.Printf("I! [serializers.photon_bin] NewSerializer is called")
+	log.Printf("D! [serializers.photon_bin] NewSerializer is called")
 	serializer := &Serializer{}
 	serializer.SenderID = senderId
 	serializer.metricsIndex = make(map[string][]photonMetricSample)
@@ -70,7 +70,7 @@ func NewSerializer(senderId string) *Serializer {
 func (s *Serializer) Serialize(m telegraf.Metric) ([]byte, error) {
 	s.buf.Reset()
 
-	log.Printf("I! [serializers.photon_bin] Serialize is called")
+	log.Printf("D! [serializers.photon_bin] Serialize is called")
 
 	writeBatchHeader(&s.buf, 1, s.SenderID)
 
@@ -89,7 +89,7 @@ func (s *Serializer) Serialize(m telegraf.Metric) ([]byte, error) {
 func (s *Serializer) SerializeBatch(metrics []telegraf.Metric) ([]byte, error) {
 	s.buf.Reset()
 
-	log.Printf("I! [serializers.photon_bin] SerializeBatch is called")
+	log.Printf("D! [serializers.photon_bin] SerializeBatch is called")
 
 	var (
 		writtenMetricsCount int32
