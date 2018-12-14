@@ -40,6 +40,8 @@ type Sample struct {
 	Sum   float64
 	// Expiration is the deadline that this Sample is valid until.
 	Expiration time.Time
+	// Timestamp time when sample was collected
+	Timestamp time.Time
 }
 
 // MetricFamily contains the data required to build valid prometheus Metrics.
@@ -64,6 +66,7 @@ type PrometheusClient struct {
 	Path               string            `toml:"path"`
 	CollectorsExclude  []string          `toml:"collectors_exclude"`
 	StringAsLabel      bool              `toml:"string_as_label"`
+	UseTimestamps      bool              `toml:"use_time_stamps"`
 
 	server *http.Server
 
@@ -144,6 +147,10 @@ func (p *PrometheusClient) auth(h http.Handler) http.Handler {
 	})
 }
 
+func getPid() (int, error) {
+	return os.Getegid(), nil
+}
+
 func (p *PrometheusClient) Start() error {
 	defaultCollectors := map[string]bool{
 		"gocollector": true,
@@ -159,7 +166,9 @@ func (p *PrometheusClient) Start() error {
 		case "gocollector":
 			registry.Register(prometheus.NewGoCollector())
 		case "process":
-			registry.Register(prometheus.NewProcessCollector(os.Getpid(), ""))
+			processCollectOpt := prometheus.ProcessCollectorOpts{PidFn: getPid}
+
+			registry.Register(prometheus.NewProcessCollector(processCollectOpt))
 		default:
 			return fmt.Errorf("unrecognized collector %s", collector)
 		}
@@ -173,6 +182,10 @@ func (p *PrometheusClient) Start() error {
 
 	if p.Path == "" {
 		p.Path = "/metrics"
+	}
+
+	if p.UseTimestamps {
+		log.Printf("I! prometheus_client sets timestamps taken from telegraf metrics")
 	}
 
 	mux := http.NewServeMux()
@@ -289,6 +302,10 @@ func (p *PrometheusClient) Collect(ch chan<- prometheus.Metric) {
 				log.Printf("E! Error creating prometheus metric, "+
 					"key: %s, labels: %v,\nerr: %s\n",
 					name, labels, err.Error())
+			}
+
+			if p.UseTimestamps {
+				metric = prometheus.NewMetricWithTimestamp(sample.Timestamp, metric)
 			}
 
 			ch <- metric
@@ -408,6 +425,7 @@ func (p *PrometheusClient) Write(metrics []telegraf.Metric) error {
 				Count:        count,
 				Sum:          sum,
 				Expiration:   now.Add(p.ExpirationInterval.Duration),
+				Timestamp:    point.Time(),
 			}
 			mname = sanitize(point.Name())
 
@@ -449,6 +467,7 @@ func (p *PrometheusClient) Write(metrics []telegraf.Metric) error {
 				Count:          count,
 				Sum:            sum,
 				Expiration:     now.Add(p.ExpirationInterval.Duration),
+				Timestamp:      point.Time(),
 			}
 			mname = sanitize(point.Name())
 
@@ -473,6 +492,7 @@ func (p *PrometheusClient) Write(metrics []telegraf.Metric) error {
 					Labels:     labels,
 					Value:      value,
 					Expiration: now.Add(p.ExpirationInterval.Duration),
+					Timestamp:  point.Time(),
 				}
 
 				// Special handling of value field; supports passthrough from
@@ -511,6 +531,7 @@ func init() {
 			StringAsLabel:      true,
 			fam:                make(map[string]*MetricFamily),
 			now:                time.Now,
+			//UseTimestamps:      true,
 		}
 	})
 }
